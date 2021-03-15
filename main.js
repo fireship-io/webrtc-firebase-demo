@@ -4,13 +4,7 @@ import firebase from 'firebase/app';
 import 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyD3pwhMvIdXNyK92Mt2QyUj2_3x2407jmY',
-  authDomain: 'fireship-demos.firebaseapp.com',
-  databaseURL: 'https://fireship-demos.firebaseio.com',
-  projectId: 'fireship-demos',
-  storageBucket: 'fireship-demos.appspot.com',
-  messagingSenderId: '454289704797',
-  appId: '1:454289704797:web:405ad440cdabffac940ab4',
+  // your config
 };
 
 if (!firebase.apps.length) {
@@ -28,7 +22,7 @@ const servers = {
 };
 
 // Global State
-let pc = new RTCPeerConnection(servers);
+const pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
 
@@ -40,7 +34,6 @@ const callInput = document.getElementById('callInput');
 const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
-
 
 // 1. Setup media sources
 
@@ -54,8 +47,8 @@ webcamButton.onclick = async () => {
   });
 
   // Pull tracks from remote stream, add to video stream
-  pc.ontrack = event => {
-    event.streams[0].getTracks().forEach(track => {
+  pc.ontrack = (event) => {
+    event.streams[0].getTracks().forEach((track) => {
       remoteStream.addTrack(track);
     });
   };
@@ -68,7 +61,6 @@ webcamButton.onclick = async () => {
   webcamButton.disabled = true;
 };
 
-
 // 2. Create an offer
 callButton.onclick = async () => {
   // Reference Firestore collections for signaling
@@ -79,7 +71,7 @@ callButton.onclick = async () => {
   callInput.value = callDoc.id;
 
   // Get candidates for caller, save to db
-  pc.onicecandidate = event => {
+  pc.onicecandidate = (event) => {
     event.candidate && offerCandidates.add(event.candidate.toJSON());
   };
 
@@ -104,7 +96,7 @@ callButton.onclick = async () => {
   });
 
   // When answered, add candidate to peer connection
-  answerCandidates.onSnapshot(snapshot => {
+  answerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const candidate = new RTCIceCandidate(change.doc.data());
@@ -116,18 +108,16 @@ callButton.onclick = async () => {
   hangupButton.disabled = false;
 };
 
-
-
 // 3. Answer the call with the unique ID
 answerButton.onclick = async () => {
   const callId = callInput.value;
   const callDoc = firestore.collection('calls').doc(callId);
   const answerCandidates = callDoc.collection('answerCandidates');
+  const offerCandidates = callDoc.collection('offerCandidates');
 
-  pc.onicecandidate = event => {
+  pc.onicecandidate = (event) => {
     event.candidate && answerCandidates.add(event.candidate.toJSON());
   };
-
 
   const callData = (await callDoc.get()).data();
 
@@ -144,28 +134,13 @@ answerButton.onclick = async () => {
 
   await callDoc.update({ answer });
 
-  callDoc.collection('offerCandidates').onSnapshot((snapshot) => {
+  offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
-      console.log(change)
+      console.log(change);
       if (change.type === 'added') {
         let data = change.doc.data();
         pc.addIceCandidate(new RTCIceCandidate(data));
       }
     });
   });
-
-
-  hangupButton.disabled = false;
 };
-
-// 4. Hangup
-
-hangupButton.onclick = async () => {
-  pc.close();
-
-  const callId = callInput.value;
-  await firestore.collection('calls').doc(callId).delete();
-
-  hangupButton.disabled = true;
-}
-
