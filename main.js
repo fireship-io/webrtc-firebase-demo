@@ -137,11 +137,11 @@ function copyLink(value) {
 }
 
 var answerCall = async(key = null) => {
-
+  startWebcam();
   if(key) {
     var callId = key;
   } else {
-    var callId = callInput.value;
+    var callId = callInput.value.replace(/ /g, "");
   }
 
   const callDoc = firestore.collection('calls').doc(callId);
