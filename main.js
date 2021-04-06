@@ -3,6 +3,9 @@ import './style.css';
 import firebase from 'firebase/app';
 import 'firebase/firestore';
 
+var urlParams = new URLSearchParams(window.location.search);
+var keyFromUrlParams = urlParams.get('key');
+
 const firebaseConfig = {
   // your config
   apiKey: "AIzaSyC5ZM0PC5WhoQZKtwzv5miMVVqOH90VvMg",
@@ -37,15 +40,18 @@ let remoteStream = null;
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
 const webcamVideo = document.getElementById('webcamVideo');
-const callButton = document.getElementById('callButton');
 const callInput = document.getElementById('callInput');
 const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
+const callKey = document.getElementById('callKey');
 
 // 1. Setup media sources
-
 webcamButton.onclick = async () => {
+  await startWebcam();
+  startCall();
+}
+var startWebcam = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   remoteStream = new MediaStream();
 
@@ -65,19 +71,21 @@ webcamButton.onclick = async () => {
   webcamVideo.muted = true;
   remoteVideo.srcObject = remoteStream;
 
-  callButton.disabled = false;
-  answerButton.disabled = false;
+  // answerButton.disabled = false;
   webcamButton.disabled = true;
+
 };
 
 // 2. Create an offer
-callButton.onclick = async () => {
+var startCall = async () => {
   // Reference Firestore collections for signaling
   const callDoc = firestore.collection('calls').doc();
   const offerCandidates = callDoc.collection('offerCandidates');
   const answerCandidates = callDoc.collection('answerCandidates');
 
-  callInput.value = callDoc.id;
+  // callInput.value = callDoc.id;
+  callKey.textContent = callDoc.id;
+  copyLink(callDoc.id);
 
   // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
@@ -119,7 +127,23 @@ callButton.onclick = async () => {
 
 // 3. Answer the call with the unique ID
 answerButton.onclick = async () => {
-  const callId = callInput.value;
+  answerCall();
+};
+
+function copyLink(value) {
+  const key = value;
+  const shareUrl = window.location.href + '?key=' + key;
+  alert("Share the link to the other party, " + shareUrl);
+}
+
+var answerCall = async(key = null) => {
+
+  if(key) {
+    var callId = key;
+  } else {
+    var callId = callInput.value;
+  }
+
   const callDoc = firestore.collection('calls').doc(callId);
   const answerCandidates = callDoc.collection('answerCandidates');
   const offerCandidates = callDoc.collection('offerCandidates');
@@ -145,11 +169,16 @@ answerButton.onclick = async () => {
 
   offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
-      console.log(change);
+      // console.log(change);
       if (change.type === 'added') {
         let data = change.doc.data();
         pc.addIceCandidate(new RTCIceCandidate(data));
       }
     });
   });
-};
+}
+
+if(keyFromUrlParams) {
+  startWebcam();
+  answerCall(keyFromUrlParams);
+}
