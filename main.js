@@ -2,9 +2,15 @@ import './style.css';
 
 import firebase from 'firebase/app';
 import 'firebase/firestore';
+import 'firebase/database';
 
 const firebaseConfig = {
-  // your config
+  apiKey: "AIzaSyAMlK4Jz60lEYnZvcFzGo-JqOPQ-Q2oXP0",
+  authDomain: "web-rtc-b2af7.firebaseapp.com",
+  projectId: "web-rtc-b2af7",
+  storageBucket: "web-rtc-b2af7.appspot.com",
+  messagingSenderId: "593149952785",
+  appId: "1:593149952785:web:1867797b5db06dac09c2b0"
 };
 
 if (!firebase.apps.length) {
