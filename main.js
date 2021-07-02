@@ -44,7 +44,6 @@ const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
-
 //
 const databaseID = document.getElementById('databaseID')
 // 1. Setup media sources
@@ -76,25 +75,24 @@ webcamButton.onclick = async () => {
 // 2. Create an offer
 callButton.onclick = async () => {
   // Reference Firestore collections for signaling
-  const callDoc = firestore.collection('calls').doc();
-  const offerCandidates = callDoc.collection('offerCandidates');
-  const answerCandidates = callDoc.collection('answerCandidates');
+  // const callDoc = firestore.collection('calls').doc();
+  // const offerCandidates = callDoc.collection('offerCandidates');
+  // const answerCandidates = callDoc.collection('answerCandidates');
 
   // database test below
   const callRef = database.ref('calls').push()
   const offerCandidates2 = callRef.child('offerCandidates')
   const answerCandidates2 = callRef.child('answerCandidates')
 
-  database.ref("calls").once("child_added", (snapshot) => {
-    console.log(snapshot.key)
+  database.ref("calls").on("child_added", (snapshot) => {
     databaseID.value = snapshot.key
   })
 
-  callInput.value = callDoc.id;// add value from snapshot here
+  // callInput.value = callDoc.id;// add value from snapshot here
 
   // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
-    event.candidate && offerCandidates.add(event.candidate.toJSON());
+    // event.candidate && offerCandidates.add(event.candidate.toJSON());
     event.candidate && offerCandidates2.push(event.candidate.toJSON()) // database
   };
 
@@ -107,50 +105,70 @@ callButton.onclick = async () => {
     type: offerDescription.type,
   };
 
-  await callDoc.set({ offer });
-  await callRef.update({ offer }); // setting in database
+  // await callDoc.set({ offer });
+  await callRef.child('protocols').set({ offer }); // setting in database
 
   // Listen for remote answer
-  callDoc.onSnapshot((snapshot) => {
-    const data = snapshot.data();
-    if (!pc.currentRemoteDescription && data?.answer) {
-      const answerDescription = new RTCSessionDescription(data.answer);
+  // callDoc.onSnapshot((snapshot) => {
+  //   const data = snapshot.data();
+  //   if (!pc.currentRemoteDescription && data?.answer) {
+  //     const answerDescription = new RTCSessionDescription(data.answer);
+  //     pc.setRemoteDescription(answerDescription);
+  //   }
+  // });
+
+  // database implemented
+  callRef.child('protocols').on('child_added', (snapshot) => {
+    const snapData = snapshot.val()
+    if (!pc.currentRemoteDescription && snapData.type === 'answer') {
+      const answerDescription = new RTCSessionDescription(snapData);
       pc.setRemoteDescription(answerDescription);
     }
   });
 
   // When answered, add candidate to peer connection
-  answerCandidates.onSnapshot((snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added') {
-        const candidate = new RTCIceCandidate(change.doc.data());
-        pc.addIceCandidate(candidate);
-      }
-    });
-  });
+  // answerCandidates.onSnapshot((snapshot) => {
+  //   snapshot.docChanges().forEach((change) => {
+  //     if (change.type === 'added') {
+  //       console.log(change.doc.data());
+  //       const candidate = new RTCIceCandidate(change.doc.data());
+  //       pc.addIceCandidate(candidate);
+  //     }
+  //   });
+  // });
+
+  // database implemented
+  answerCandidates2.on('child_added', (snapshot) => {
+    const candidate = new RTCIceCandidate(snapshot.val());
+    pc.addIceCandidate(candidate);
+  })
 
   hangupButton.disabled = false;
 };
 
 // 3. Answer the call with the unique ID
 answerButton.onclick = async () => {
-  const callId = callInput.value;
-  const callDoc = firestore.collection('calls').doc(callId);
-  const answerCandidates = callDoc.collection('answerCandidates');
-  const offerCandidates = callDoc.collection('offerCandidates');
+  // const callId = callInput.value;
+  // const callDoc = firestore.collection('calls').doc(callId);
+  // const answerCandidates = callDoc.collection('answerCandidates');
+  // const offerCandidates = callDoc.collection('offerCandidates');
 
   // database variables below
   const callIdDatabase = databaseID.value
-  const callRef = await database.ref('calls').child(callIdDatabase);
+  const callRef = database.ref('calls').child(callIdDatabase);
   const answerCandidates2 = callRef.child('answerCandidates');
+  const offerCandidates2 = callRef.child('offerCandidates');
   // end database variables
 
   pc.onicecandidate = (event) => {
-    event.candidate && answerCandidates.add(event.candidate.toJSON());
+    // event.candidate && answerCandidates.add(event.candidate.toJSON());
     event.candidate && answerCandidates2.push(event.candidate.toJSON());
   };
 
-  const callData = (await callDoc.get()).data();
+  // const callData = (await callDoc.get()).data();
+
+  // database
+  const callData = (await callRef.child('protocols').get()).val();
 
   const offerDescription = callData.offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
@@ -163,17 +181,24 @@ answerButton.onclick = async () => {
     sdp: answerDescription.sdp,
   };
 
-  await callDoc.update({ answer });
-  await callRef.update({ answer }); // database
+  // await callDoc.update({ answer });
+  await callRef.child('protocols').update({ answer }); // setting in database
 
-  offerCandidates.onSnapshot((snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      console.log(change);
-      if (change.type === 'added') {
-        let data = change.doc.data();
-        // console.log(data)
-        pc.addIceCandidate(new RTCIceCandidate(data));
-      }
-    });
-  });
+  // offerCandidates.onSnapshot((snapshot) => {
+  //   snapshot.docChanges().forEach((change) => {
+  //     console.log(change);
+  //     if (change.type === 'added') {
+  //       let data = change.doc.data();
+  //       // console.log(data)
+  //       pc.addIceCandidate(new RTCIceCandidate(data));
+  //     }
+  //   });
+  // });
+
+  offerCandidates2.on('child_added', (snapshot) => {
+    pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+    console.log("ICE candidate added")
+  })
+
+
 };
