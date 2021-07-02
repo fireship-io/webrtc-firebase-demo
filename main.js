@@ -7,6 +7,7 @@ import 'firebase/database';
 const firebaseConfig = {
   apiKey: "AIzaSyAMlK4Jz60lEYnZvcFzGo-JqOPQ-Q2oXP0",
   authDomain: "web-rtc-b2af7.firebaseapp.com",
+  databaseURL: "https://web-rtc-b2af7-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "web-rtc-b2af7",
   storageBucket: "web-rtc-b2af7.appspot.com",
   messagingSenderId: "593149952785",
@@ -17,6 +18,8 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 const firestore = firebase.firestore();
+const database = firebase.database();
+
 
 const servers = {
   iceServers: [
@@ -41,6 +44,9 @@ const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
+
+//
+const databaseID = document.getElementById('databaseID')
 // 1. Setup media sources
 
 webcamButton.onclick = async () => {
@@ -74,11 +80,22 @@ callButton.onclick = async () => {
   const offerCandidates = callDoc.collection('offerCandidates');
   const answerCandidates = callDoc.collection('answerCandidates');
 
-  callInput.value = callDoc.id;
+  // database test below
+  const callRef = database.ref('calls').push()
+  const offerCandidates2 = callRef.child('offerCandidates')
+  const answerCandidates2 = callRef.child('answerCandidates')
+
+  database.ref("calls").once("child_added", (snapshot) => {
+    console.log(snapshot.key)
+    databaseID.value = snapshot.key
+  })
+
+  callInput.value = callDoc.id;// add value from snapshot here
 
   // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
     event.candidate && offerCandidates.add(event.candidate.toJSON());
+    event.candidate && offerCandidates2.push(event.candidate.toJSON()) // database
   };
 
   // Create offer
@@ -91,6 +108,7 @@ callButton.onclick = async () => {
   };
 
   await callDoc.set({ offer });
+  await callRef.update({ offer }); // setting in database
 
   // Listen for remote answer
   callDoc.onSnapshot((snapshot) => {
@@ -121,8 +139,15 @@ answerButton.onclick = async () => {
   const answerCandidates = callDoc.collection('answerCandidates');
   const offerCandidates = callDoc.collection('offerCandidates');
 
+  // database variables below
+  const callIdDatabase = databaseID.value
+  const callRef = await database.ref('calls').child(callIdDatabase);
+  const answerCandidates2 = callRef.child('answerCandidates');
+  // end database variables
+
   pc.onicecandidate = (event) => {
     event.candidate && answerCandidates.add(event.candidate.toJSON());
+    event.candidate && answerCandidates2.push(event.candidate.toJSON());
   };
 
   const callData = (await callDoc.get()).data();
@@ -139,12 +164,14 @@ answerButton.onclick = async () => {
   };
 
   await callDoc.update({ answer });
+  await callRef.update({ answer }); // database
 
   offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       console.log(change);
       if (change.type === 'added') {
         let data = change.doc.data();
+        // console.log(data)
         pc.addIceCandidate(new RTCIceCandidate(data));
       }
     });
