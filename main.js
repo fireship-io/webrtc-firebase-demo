@@ -54,6 +54,7 @@ webcamButton.onclick = async () => {
   };
 
   webcamVideo.srcObject = localStream;
+  webcamVideo.muted = true;
   remoteVideo.srcObject = remoteStream;
 
   callButton.disabled = false;
