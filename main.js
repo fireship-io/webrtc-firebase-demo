@@ -1,16 +1,14 @@
 import './style.css';
 
-import firebase from 'firebase/app';
-import 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
+import { addDoc, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   // your config
 };
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
-const firestore = firebase.firestore();
+const app = initializeApp(firebaseConfig);
+const firestore = getFirestore(app);
 
 const servers = {
   iceServers: [
@@ -64,15 +62,19 @@ webcamButton.onclick = async () => {
 // 2. Create an offer
 callButton.onclick = async () => {
   // Reference Firestore collections for signaling
-  const callDoc = firestore.collection('calls').doc();
-  const offerCandidates = callDoc.collection('offerCandidates');
-  const answerCandidates = callDoc.collection('answerCandidates');
+  const callDocs = await getDocs(collection(firestore, 'calls'));
+  const callDoc = callDocs.docs[0];
+  const callDocId = callDoc.id;
+  const callDocRef = doc(firestore, 'calls', callDocId);
 
-  callInput.value = callDoc.id;
+  const offerCandidatesRef = collection(firestore, `calls/${callDocId}/offerCandidates`);
+  const answerCandidatesRef = collection(firestore, `calls/${callDocId}/offerCandidates`);
+
+  callInput.value = callDocId;
 
   // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
-    event.candidate && offerCandidates.add(event.candidate.toJSON());
+    event.candidate && addDoc(offerCandidatesRef, event.candidate.toJSON());
   };
 
   // Create offer
@@ -84,10 +86,10 @@ callButton.onclick = async () => {
     type: offerDescription.type,
   };
 
-  await callDoc.set({ offer });
+  await setDoc(callDocRef, { offer });
 
   // Listen for remote answer
-  callDoc.onSnapshot((snapshot) => {
+  onSnapshot(callDocRef, (snapshot) => {
     const data = snapshot.data();
     if (!pc.currentRemoteDescription && data?.answer) {
       const answerDescription = new RTCSessionDescription(data.answer);
@@ -96,7 +98,7 @@ callButton.onclick = async () => {
   });
 
   // When answered, add candidate to peer connection
-  answerCandidates.onSnapshot((snapshot) => {
+  onSnapshot(answerCandidatesRef, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
         const candidate = new RTCIceCandidate(change.doc.data());
@@ -111,15 +113,16 @@ callButton.onclick = async () => {
 // 3. Answer the call with the unique ID
 answerButton.onclick = async () => {
   const callId = callInput.value;
-  const callDoc = firestore.collection('calls').doc(callId);
-  const answerCandidates = callDoc.collection('answerCandidates');
-  const offerCandidates = callDoc.collection('offerCandidates');
+  const callDoc = doc(firestore, 'calls', callId);
+
+  const answerCandidatesRef = collection(callDoc, 'answerCandidates');
+  const offerCandidatesRef = collection(callDoc, 'offerCandidates');
 
   pc.onicecandidate = (event) => {
-    event.candidate && answerCandidates.add(event.candidate.toJSON());
+    event.candidate && answerCandidatesRef.add(event.candidate.toJSON());
   };
 
-  const callData = (await callDoc.get()).data();
+  const callData = (await getDoc(callDoc)).data();
 
   const offerDescription = callData.offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
@@ -132,11 +135,10 @@ answerButton.onclick = async () => {
     sdp: answerDescription.sdp,
   };
 
-  await callDoc.update({ answer });
+  await updateDoc(callDoc, { answer });
 
-  offerCandidates.onSnapshot((snapshot) => {
+  onSnapshot(offerCandidatesRef, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
-      console.log(change);
       if (change.type === 'added') {
         let data = change.doc.data();
         pc.addIceCandidate(new RTCIceCandidate(data));
