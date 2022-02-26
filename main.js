@@ -1,7 +1,7 @@
 import './style.css';
 
-import firebase from 'firebase/app';
-import 'firebase/firestore';
+import * as firebase from 'firebase/app'
+import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   // your config
