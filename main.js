@@ -4,7 +4,13 @@ import firebase from 'firebase/app';
 import 'firebase/firestore';
 
 const firebaseConfig = {
-  // your config
+  apiKey: "AIzaSyASTzigG1RpqgKe_y7dG3GXuGu20gqBN7U",
+  authDomain: "streamapp-firebase.firebaseapp.com",
+  projectId: "streamapp-firebase",
+  storageBucket: "streamapp-firebase.appspot.com",
+  messagingSenderId: "266413070480",
+  appId: "1:266413070480:web:eee0038fe5e38578fc2015",
+  measurementId: "G-NV3BGTLE9L"
 };
 
 if (!firebase.apps.length) {
@@ -143,4 +149,9 @@ answerButton.onclick = async () => {
       }
     });
   });
+};
+
+hangupButton.onclick = () => {
+  pc.close();
+  location.reload();
 };
