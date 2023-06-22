@@ -1,16 +1,21 @@
 import './style.css';
-
-import firebase from 'firebase/app';
-import 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
 
 const firebaseConfig = {
-  // your config
+  apiKey: "AIzaSyAG-vVsFLnPfFupYN39EtoMWCcXCMcP4y0",
+  authDomain: "webrtc-demo-97583.firebaseapp.com",
+  projectId: "webrtc-demo-97583",
+  storageBucket: "webrtc-demo-97583.appspot.com",
+  messagingSenderId: "911858260221",
+  appId: "1:911858260221:web:a8d5fd20f71b6a3c474694"
 };
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
-const firestore = firebase.firestore();
+// Firebase initialization
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+
+// Firestore initialization
+const firestore = firebaseApp.firestore();
 
 const servers = {
   iceServers: [
@@ -25,28 +30,35 @@ const servers = {
 const pc = new RTCPeerConnection(servers);
 let localStream = null;
 let remoteStream = null;
+let peerId = null;
 
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
 const webcamVideo = document.getElementById('webcamVideo');
 const callButton = document.getElementById('callButton');
-const callInput = document.getElementById('callInput');
 const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
-// 1. Setup media sources
+// Firestore collections
+const roomsCollection = firestore.collection('rooms');
+let roomDoc = null;
+let offerCandidates = null;
+let answerCandidates = null;
+const peersCollection = firestore.collection('peers');
 
+// Constant room id
+const roomId = '123456';
+
+// Setup media sources
 webcamButton.onclick = async () => {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   remoteStream = new MediaStream();
 
-  // Push tracks from local stream to peer connection
   localStream.getTracks().forEach((track) => {
     pc.addTrack(track, localStream);
   });
 
-  // Pull tracks from remote stream, add to video stream
   pc.ontrack = (event) => {
     event.streams[0].getTracks().forEach((track) => {
       remoteStream.addTrack(track);
@@ -56,26 +68,24 @@ webcamButton.onclick = async () => {
   webcamVideo.srcObject = localStream;
   remoteVideo.srcObject = remoteStream;
 
+  peerId = Math.random().toString(36).substring(2); // Generate a unique peer ID
   callButton.disabled = false;
-  answerButton.disabled = false;
   webcamButton.disabled = true;
 };
 
-// 2. Create an offer
+// Create an offer
 callButton.onclick = async () => {
-  // Reference Firestore collections for signaling
-  const callDoc = firestore.collection('calls').doc();
-  const offerCandidates = callDoc.collection('offerCandidates');
-  const answerCandidates = callDoc.collection('answerCandidates');
+  roomDoc = roomsCollection.doc(roomId);
+  offerCandidates = roomDoc.collection('offerCandidates');
+  answerCandidates = roomDoc.collection('answerCandidates');
 
-  callInput.value = callDoc.id;
+  // Add peer id to Firebase
+  await peersCollection.add({ peerId });
 
-  // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {
     event.candidate && offerCandidates.add(event.candidate.toJSON());
   };
 
-  // Create offer
   const offerDescription = await pc.createOffer();
   await pc.setLocalDescription(offerDescription);
 
@@ -84,10 +94,9 @@ callButton.onclick = async () => {
     type: offerDescription.type,
   };
 
-  await callDoc.set({ offer });
+  await roomDoc.set({ offer, callerId: peerId });
 
-  // Listen for remote answer
-  callDoc.onSnapshot((snapshot) => {
+  roomDoc.onSnapshot((snapshot) => {
     const data = snapshot.data();
     if (!pc.currentRemoteDescription && data?.answer) {
       const answerDescription = new RTCSessionDescription(data.answer);
@@ -95,7 +104,6 @@ callButton.onclick = async () => {
     }
   });
 
-  // When answered, add candidate to peer connection
   answerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
       if (change.type === 'added') {
@@ -108,18 +116,17 @@ callButton.onclick = async () => {
   hangupButton.disabled = false;
 };
 
-// 3. Answer the call with the unique ID
+// Answer the call
 answerButton.onclick = async () => {
-  const callId = callInput.value;
-  const callDoc = firestore.collection('calls').doc(callId);
-  const answerCandidates = callDoc.collection('answerCandidates');
-  const offerCandidates = callDoc.collection('offerCandidates');
+  roomDoc = roomsCollection.doc(roomId);
+  offerCandidates = roomDoc.collection('offerCandidates');
+  answerCandidates = roomDoc.collection('answerCandidates');
 
   pc.onicecandidate = (event) => {
     event.candidate && answerCandidates.add(event.candidate.toJSON());
   };
 
-  const callData = (await callDoc.get()).data();
+  const callData = (await roomDoc.get()).data();
 
   const offerDescription = callData.offer;
   await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
@@ -132,7 +139,7 @@ answerButton.onclick = async () => {
     sdp: answerDescription.sdp,
   };
 
-  await callDoc.update({ answer });
+  await roomDoc.update({ answer, answererId: peerId });
 
   offerCandidates.onSnapshot((snapshot) => {
     snapshot.docChanges().forEach((change) => {
@@ -144,3 +151,37 @@ answerButton.onclick = async () => {
     });
   });
 };
+
+hangupButton.onclick = () => {
+  pc.close();
+
+  localStream.getTracks().forEach((track) => {
+    track.stop();
+  });
+
+  webcamVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+
+  hangupButton.disabled = true;
+  webcamButton.disabled = false;
+  callButton.disabled = true;
+
+  // Remove peer id from Firebase
+  peersCollection.where('peerId', '==', peerId).get()
+    .then((snapshot) => {
+      snapshot.forEach((doc) => {
+        doc.ref.delete();
+      });
+    });
+
+  roomDoc.set({ callerId: null, answererId: null });
+};
+
+// Check if there are any peer ids
+peersCollection.onSnapshot((snapshot) => {
+  if (snapshot.empty) {
+    answerButton.disabled = true;
+  } else {
+    answerButton.disabled = false;
+  }
+});
